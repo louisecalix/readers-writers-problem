@@ -25,18 +25,21 @@ def save_nfts(nfts): # save the nfts to json file
 
 nfts = load_nfts()
 updating_nfts = {}
-reader_stop_event = Event() # event to stop the reader
-writer_done_event = Event() # event to stop the writer
+reader_stop_event = Event() 
+writer_done_event = Event() 
 
-writer_semaphore = Semaphore(1) # semaphore for writer (1 writer lang may access)
-reader_semaphore = Semaphore(5) # 5 readers lang pwede mag access
-buy_semaphore = Semaphore(1)
 
 buyer_count = 0
 seller_count = 0
 buyer_windows = []
 buyer_terminate_events = []
 current_nft_index = 0
+
+
+writer_semaphore = Semaphore(1) # semaphore for writer (1 writer lang may access)
+reader_semaphore = Semaphore(5) # 5 readers lang pwede mag access
+buy_semaphore = Semaphore(1)
+
 
 def update_nft_list(listbox, exclude=None): # update the nft list
     if program_terminated or not listbox.winfo_exists():
@@ -45,8 +48,8 @@ def update_nft_list(listbox, exclude=None): # update the nft list
     # for nft in nfts:
     #     if nft["name"] != exclude and nft["name"] not in updating_nfts:
     #         listbox.insert(tk.END, nft["name"])
-    selected_indices = listbox.curselection()
-    selected_items = [listbox.get(i) for i in selected_indices] if selected_indices else []
+    selected_nftIndex = listbox.curselection()
+    selected_items = [listbox.get(i) for i in selected_nftIndex] if selected_nftIndex else []
     listbox.delete(0, tk.END)
     for nft in nfts:
         if nft["name"] != exclude and nft["name"] not in updating_nfts:
@@ -54,6 +57,8 @@ def update_nft_list(listbox, exclude=None): # update the nft list
     for i, item in enumerate(listbox.get(0, tk.END)):
         if item in selected_items:
             listbox.select_set(i)
+
+            
 
 def create_buyer_window(parent): # --------------------------- BUYER ---------------------------
     global buyer_count, buyer_windows, buyer_terminate_events
@@ -109,7 +114,7 @@ def create_buyer_window(parent): # --------------------------- BUYER -----------
         global current_nft_index
 
         def reader_task():
-            global current_nft_index  # Declare current_nft_index as global
+            global current_nft_index 
             try:
                 reader_semaphore.acquire()
                 if program_terminated:
@@ -157,13 +162,13 @@ def create_buyer_window(parent): # --------------------------- BUYER -----------
 
     Thread(target=auto_view_nfts).start()
 
-    def on_close():
+    def close_win():
         terminate_event.set()
         buyer_windows.remove(buyer_window)
         buyer_terminate_events.remove(terminate_event)
         buyer_window.destroy()
 
-    buyer_window.protocol("WM_DELETE_WINDOW", on_close)
+    buyer_window.protocol("WM_DELETE_WINDOW", close_win)
 
 
 
@@ -198,12 +203,12 @@ def create_seller_window(parent): # --------------------------- SELLER ---------
             log_text.see(tk.END)
 
     def select_nft_to_update():
-        selected_indices = nft_listbox.curselection()
-        if not selected_indices:
+        selected_nftIndex = nft_listbox.curselection()
+        if not selected_nftIndex:
             log("No NFT selected for updating.")
             return
 
-        selected_nft = nft_listbox.get(selected_indices[0])
+        selected_nft = nft_listbox.get(selected_nftIndex[0])
 
         if selected_nft in updating_nfts:
             log("Another seller is currently updating this NFT. Try updating a different NFT.")
@@ -211,7 +216,7 @@ def create_seller_window(parent): # --------------------------- SELLER ---------
 
         log(f"Seller selected {selected_nft} for updating.")
         selected_nft_label.config(text=f"Selected NFT: {selected_nft}")
-        nft_listbox.delete(selected_indices[0])
+        nft_listbox.delete(selected_nftIndex[0])
 
         input_field.delete(0, tk.END)
         input_field.insert(0, selected_nft)
@@ -237,12 +242,12 @@ def create_seller_window(parent): # --------------------------- SELLER ---------
 
     Thread(target=auto_update_nfts).start()
 
-    def on_close():
+    def close_win():
         program_terminated = True
         buyer_terminate_events.clear()
         seller_window.destroy()
 
-    seller_window.protocol("WM_DELETE_WINDOW", on_close)
+    seller_window.protocol("WM_DELETE_WINDOW", close_win)
 
 def done_writing(log): #if done writing the ud
     writer_done_event.set()
@@ -251,7 +256,8 @@ def done_writing(log): #if done writing the ud
     # Update buyer views to reflect the updated NFT
     update_reader_views()
 
-def writer_task(selected_nft, log, nft_listbox, input_field): # for updating nft operation
+
+def writer_task(selected_nft, log, nft_listbox, input_field):
     global updating_nfts, nfts
     writer_semaphore.acquire()
     try:
@@ -277,9 +283,18 @@ def writer_task(selected_nft, log, nft_listbox, input_field): # for updating nft
         del updating_nfts[selected_nft]
         reader_stop_event.clear()
         update_reader_views()
-        update_nft_list(nft_listbox)
+
+        # Refresh the NFT list for all seller windows
+        for seller_window in tk._default_root.winfo_children():
+            if isinstance(seller_window, tk.Toplevel) and "Seller Window" in seller_window.title():
+                for child in seller_window.winfo_children():
+                    if isinstance(child, tk.Listbox):
+                        update_nft_list(child)
     finally:
         writer_semaphore.release()
+
+
+
 
 def update_reader_views():
     if program_terminated:
@@ -327,6 +342,7 @@ def main():
     def startsimulation():
         for _ in range(2):
             create_buyer_window(root)
+        
             create_seller_window(root)
         
         # create_seller_window(root)
@@ -344,12 +360,12 @@ def main():
     # program_terminated = False
     # def terminate_program():
 
-    def on_close():
+    def close_win():
         global program_terminated
         program_terminated = True
         root.destroy()
 
-    root.protocol("WM_DELETE_WINDOW", on_close)
+    root.protocol("WM_DELETE_WINDOW", close_win)
     root.mainloop()
 
 if __name__ == "__main__":
